@@ -2,9 +2,8 @@
 using Exiled.API.Interfaces;
 using System;
 using System.IO;
-// Важно: не забудьте нужные using для RoundStartedEventArgs, RoundEndedEventArgs и т.д.
-using Server = Exiled.Events.Handlers.Server;
 using Player = Exiled.Events.Handlers.Player;
+using Server = Exiled.Events.Handlers.Server;
 
 namespace SCPSL_Lvl
 {
@@ -17,14 +16,18 @@ namespace SCPSL_Lvl
         public override Version Version => new Version(1, 0, 0);
         public override Version RequiredExiledVersion => new Version(9, 0, 0);
 
-        /// <summary>
-        /// Если хотите хранить свои файлы (LevelConfig, TaskConfig) в папке SCPSL_Lvl:
-        /// </summary>
         public string PluginFolderPath => Path.Combine(Paths.Configs, "SCPSL_Lvl");
 
+        // Конфиги уровней
         public LevelConfig LevelConfig { get; private set; }
+
+        // Конфиг с общими определениями задач (TasksConfig)
         public TasksConfig TasksConfig { get; private set; }
+
+        // База игроков
         public PlayerDatabaseManager PlayerDatabaseManager { get; private set; }
+
+        // Переводы
         public PluginTranslations MyTranslation { get; private set; }
 
         public EventHandlers EventHandlers { get; private set; }
@@ -36,20 +39,22 @@ namespace SCPSL_Lvl
             Instance = this;
 
             if (Config.Debug)
-                Log.Debug("[Plugin] OnEnabled called.");
+                Log.Debug("[Plugin] OnEnabled called. (Instance set)");
 
             try
             {
-                // Создадим папку SCPSL_Lvl, если нужно
                 Directory.CreateDirectory(PluginFolderPath);
 
-                // Грузим любые дополнительные конфиги (пример, если у вас есть)
-                // LevelConfig = LevelConfig.LoadOrCreate(Path.Combine(PluginFolderPath, "LevelThresholds.yml"));
-                // TasksConfig = TasksConfig.LoadOrCreate(Path.Combine(PluginFolderPath, "TasksConfig.yml"));
-                // PlayerDatabaseManager = new PlayerDatabaseManager(Path.Combine(PluginFolderPath, "players.yml"));
-                // MyTranslation = PluginTranslations.LoadOrCreate(Path.Combine(PluginFolderPath, "Translations.yml"));
+                if (Config.Debug)
+                    Log.Debug("[Plugin] Loading LevelConfig, TasksConfig, PlayerDatabaseManager, and Translations...");
 
-                // Создаём и подписываемся
+                LevelConfig = LevelConfig.LoadOrCreate(Path.Combine(PluginFolderPath, "LevelThresholds.yml"));
+                TasksConfig = TasksConfig.LoadOrCreate(Path.Combine(PluginFolderPath, "TasksConfig.yml"));
+                PlayerDatabaseManager = new PlayerDatabaseManager(Path.Combine(PluginFolderPath, "players.yml"));
+
+                string translationsPath = Path.Combine(PluginFolderPath, "Translations.yml");
+                MyTranslation = PluginTranslations.LoadOrCreate(translationsPath);
+
                 EventHandlers = new EventHandlers();
                 SubscribeEvents();
 
@@ -70,8 +75,8 @@ namespace SCPSL_Lvl
 
             UnsubscribeEvents();
 
-            // Сохранение если нужно
-            // PlayerDatabaseManager?.SaveDatabase();
+            PlayerDatabaseManager?.SaveDatabase();
+            MyTranslation?.Save(Path.Combine(PluginFolderPath, "Translations.yml"));
 
             Log.Info($"[{Name}] Plugin disabled.");
             Instance = null;
@@ -82,10 +87,10 @@ namespace SCPSL_Lvl
             if (Config.Debug)
                 Log.Debug("[Plugin] Subscribing to events...");
 
-            Player.Joined += EventHandlers.OnPlayerJoined;
             Player.Verified += EventHandlers.OnPlayerVerified;
-            Player.Spawning += EventHandlers.OnPlayerSpawning;
             Player.Died += EventHandlers.OnPlayerDied;
+            Player.Spawning += EventHandlers.OnPlayerSpawning;
+            Player.Joined += EventHandlers.OnPlayerJoined;
 
             Server.RoundStarted += EventHandlers.OnRoundStarted;
             Server.RoundEnded += EventHandlers.OnRoundEnded;
@@ -96,10 +101,10 @@ namespace SCPSL_Lvl
             if (Config.Debug)
                 Log.Debug("[Plugin] Unsubscribing from events...");
 
-            Player.Joined -= EventHandlers.OnPlayerJoined;
             Player.Verified -= EventHandlers.OnPlayerVerified;
-            Player.Spawning -= EventHandlers.OnPlayerSpawning;
             Player.Died -= EventHandlers.OnPlayerDied;
+            Player.Spawning -= EventHandlers.OnPlayerSpawning;
+            Player.Joined -= EventHandlers.OnPlayerJoined;
 
             Server.RoundStarted -= EventHandlers.OnRoundStarted;
             Server.RoundEnded -= EventHandlers.OnRoundEnded;
