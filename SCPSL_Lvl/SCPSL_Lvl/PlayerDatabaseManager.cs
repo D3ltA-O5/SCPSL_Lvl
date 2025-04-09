@@ -32,22 +32,30 @@ namespace SCPSL_Lvl
             _coldDatabasePath = coldPath;
             _hotDatabasePath = hotPath;
 
+            // Гарантируем, что директории существуют.
+            string coldDir = Path.GetDirectoryName(_coldDatabasePath);
+            string hotDir = Path.GetDirectoryName(_hotDatabasePath);
+
+            if (!string.IsNullOrEmpty(coldDir))
+                Directory.CreateDirectory(coldDir);
+
+            if (!string.IsNullOrEmpty(hotDir))
+                Directory.CreateDirectory(hotDir);
+
             LoadColdDatabase();
             LoadHotDatabase();
-            // Если вы хотите начинать каждое включение сервера с пустой горячей базы, 
-            // то вместо LoadHotDatabase() сделайте _hotPlayerDataDict = new Dictionary<string, PlayerData>();
+            // Если вы хотите, чтобы при каждом рестарте сервера "горячая" база была пуста, 
+            // закомментируйте LoadHotDatabase() и оставьте пустой словарь.
         }
 
         /// <summary>
-        /// Основной метод, который вызывается кодом плагина.
-        /// Возвращает PlayerData из горячей БД, создаёт новую запись (и копирует из холодной),
-        /// если её там ещё нет.
+        /// Получить данные игрока из горячей БД (или создать новую запись, скопировав из холодной).
         /// </summary>
         public PlayerData GetPlayerData(string userId)
         {
             bool debug = Plugin.Instance.ManualConfig.Debug;
 
-            // Сначала смотрим в горячую базу
+            // Сначала смотрим в горячей базе
             if (_hotPlayerDataDict.TryGetValue(userId, out var hotData))
             {
                 if (debug)
@@ -55,12 +63,12 @@ namespace SCPSL_Lvl
                 return hotData;
             }
 
-            // Если в горячей нет, значит игрок только подключился. Попробуем взять из холодной
+            // Если нет в горячей, пробуем в холодной
             if (_coldPlayerDataDict.TryGetValue(userId, out var coldData))
             {
                 if (debug)
                     Log.Debug($"[PlayerDatabaseManager] Loading data from ColdDB for {userId}.");
-                // Копируем объект
+
                 var newData = ClonePlayerData(coldData);
                 _hotPlayerDataDict[userId] = newData;
                 SaveHotDatabase();
@@ -70,7 +78,7 @@ namespace SCPSL_Lvl
             {
                 if (debug)
                     Log.Debug($"[PlayerDatabaseManager] Creating new data for {userId} (not found in ColdDB).");
-                // Совсем новый игрок
+
                 var newData = new PlayerData
                 {
                     UserId = userId,
@@ -84,8 +92,7 @@ namespace SCPSL_Lvl
         }
 
         /// <summary>
-        /// Вызывается, когда игрок выходит. 
-        /// Синхронизирует его данные из горячей базы обратно в холодную, удаляет из горячей.
+        /// Удаляем игрока из горячей БД при выходе, синхронизируя его данные в холодную.
         /// </summary>
         public void RemoveFromHotDatabase(string userId)
         {
@@ -96,13 +103,9 @@ namespace SCPSL_Lvl
                 if (debug)
                     Log.Debug($"[PlayerDatabaseManager] Removing {userId} from HotDB and syncing to ColdDB.");
 
-                // Переносим актуальные данные в холодную
                 _coldPlayerDataDict[userId] = ClonePlayerData(hotData);
-
-                // Убираем из горячей
                 _hotPlayerDataDict.Remove(userId);
 
-                // Сохраняем
                 SaveColdDatabase();
                 SaveHotDatabase();
             }
@@ -157,6 +160,11 @@ namespace SCPSL_Lvl
                 if (debug)
                     Log.Debug($"[PlayerDatabaseManager] Saving ColdDB to {_coldDatabasePath}");
 
+                // На всякий случай, если директория удалилась
+                string coldDir = Path.GetDirectoryName(_coldDatabasePath);
+                if (!string.IsNullOrEmpty(coldDir))
+                    Directory.CreateDirectory(coldDir);
+
                 var serializer = new SerializerBuilder().Build();
                 var yaml = serializer.Serialize(_coldPlayerDataDict.Values.ToList());
                 File.WriteAllText(_coldDatabasePath, yaml);
@@ -172,7 +180,6 @@ namespace SCPSL_Lvl
 
         /// <summary>
         /// Загружает горячую БД из файла.
-        /// Если файла нет, создаёт пустую.
         /// </summary>
         public void LoadHotDatabase()
         {
@@ -215,6 +222,11 @@ namespace SCPSL_Lvl
                 if (debug)
                     Log.Debug($"[PlayerDatabaseManager] Saving HotDB to {_hotDatabasePath}");
 
+                // На всякий случай, если директория удалилась
+                string hotDir = Path.GetDirectoryName(_hotDatabasePath);
+                if (!string.IsNullOrEmpty(hotDir))
+                    Directory.CreateDirectory(hotDir);
+
                 var serializer = new SerializerBuilder().Build();
                 var yaml = serializer.Serialize(_hotPlayerDataDict.Values.ToList());
                 File.WriteAllText(_hotDatabasePath, yaml);
@@ -234,8 +246,6 @@ namespace SCPSL_Lvl
         /// </summary>
         private PlayerData ClonePlayerData(PlayerData original)
         {
-            // Можно использовать сериализацию/десериализацию YAML, JSON и т.д.,
-            // но здесь просто вручную копируем нужные поля.
             return new PlayerData
             {
                 UserId = original.UserId,
