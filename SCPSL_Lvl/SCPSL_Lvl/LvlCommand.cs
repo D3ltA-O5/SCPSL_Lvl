@@ -13,7 +13,7 @@ namespace SCPSL_Lvl
 
         public bool Execute(ArraySegment<string> arguments, ICommandSender sender, out string response)
         {
-            if (Plugin.Instance.Config.Debug)
+            if (Plugin.Instance.ManualConfig.Debug)
                 Log.Debug("[LvlCommand] Execute called.");
 
             var player = Player.Get(sender);
@@ -47,10 +47,9 @@ namespace SCPSL_Lvl
 
             int level = lvlConfig.GetLevelFromXp(data.TotalXp);
 
-            if (Plugin.Instance.Config.Debug)
+            if (Plugin.Instance.ManualConfig.Debug)
                 Log.Debug($"[LvlCommand] Player {player.Nickname} XP = {data.TotalXp}, level = {level}");
 
-            // Find next level
             int? nextLevel = null;
             int xpNeeded = 0;
             foreach (var kvp in lvlConfig.LevelThresholds)

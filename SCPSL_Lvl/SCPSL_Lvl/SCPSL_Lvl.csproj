@@ -111,6 +111,7 @@
   <ItemGroup>
     <Compile Include="DailyTasksDatabase.cs" />
     <Compile Include="EventHandlers.cs" />
+    <Compile Include="ExiledStubConfig.cs" />
     <Compile Include="LevelConfig.cs" />
     <Compile Include="LvlCommand.cs" />
     <Compile Include="MainConfig.cs" />

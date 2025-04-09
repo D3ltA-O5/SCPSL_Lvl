@@ -21,7 +21,7 @@ namespace SCPSL_Lvl
 
         public int GetLevelFromXp(int totalXp)
         {
-            if (Plugin.Instance.Config.Debug)
+            if (Plugin.Instance.ManualConfig.Debug)
                 Log.Debug($"[LevelConfig] Calculating level from XP: {totalXp}");
 
             var sorted = LevelThresholds.OrderBy(k => k.Key);
@@ -37,7 +37,7 @@ namespace SCPSL_Lvl
                     break;
             }
 
-            if (Plugin.Instance.Config.Debug)
+            if (Plugin.Instance.ManualConfig.Debug)
                 Log.Debug($"[LevelConfig] Determined level: {currentLevel}");
 
             return currentLevel;
@@ -45,7 +45,7 @@ namespace SCPSL_Lvl
 
         public static LevelConfig LoadOrCreate(string path)
         {
-            if (Plugin.Instance.Config.Debug)
+            if (Plugin.Instance.ManualConfig.Debug)
                 Log.Debug($"[LevelConfig] Loading or creating: {path}");
 
             if (!File.Exists(path))
@@ -63,14 +63,14 @@ namespace SCPSL_Lvl
 
         public void Save(string path)
         {
-            if (Plugin.Instance.Config.Debug)
+            if (Plugin.Instance.ManualConfig.Debug)
                 Log.Debug($"[LevelConfig] Saving to file: {path}");
 
             var serializer = new SerializerBuilder().Build();
             var yaml = serializer.Serialize(this);
             File.WriteAllText(path, yaml);
 
-            if (Plugin.Instance.Config.Debug)
+            if (Plugin.Instance.ManualConfig.Debug)
                 Log.Debug("[LevelConfig] Saved.");
         }
     }

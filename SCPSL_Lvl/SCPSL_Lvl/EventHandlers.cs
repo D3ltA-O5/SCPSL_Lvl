@@ -17,12 +17,11 @@ namespace SCPSL_Lvl
         private CoroutineHandle _reminderCoroutine;
         private CoroutineHandle _onlineXpCoroutine;
 
-        /// <summary>
-        /// Вызывается, когда игрок уже аутентифицирован (Verified). Здесь мы генерируем/проверяем личные задания.
-        /// </summary>
         public void OnPlayerVerified(VerifiedEventArgs ev)
         {
-            if (Plugin.Instance.Config.Debug)
+            var debug = Plugin.Instance.ManualConfig.Debug;
+
+            if (debug)
                 Log.Debug($"[EventHandlers] OnPlayerVerified: {ev.Player?.UserId}");
 
             if (ev.Player == null || string.IsNullOrEmpty(ev.Player.UserId))
@@ -40,15 +39,14 @@ namespace SCPSL_Lvl
                 data.OriginalNickname = ev.Player.Nickname;
                 dbManager.SaveDatabase();
 
-                if (Plugin.Instance.Config.Debug)
+                if (debug)
                     Log.Debug($"[EventHandlers] Original nickname saved: {data.OriginalNickname}");
             }
 
-            // Проверяем, не сменился ли день (или нет ли у игрока заданий)
+            // Проверяем дату последних заданий
             var today = DateTime.Now.Date;
             if (data.LastTasksGeneratedDate < today || data.CurrentDailyTasks.Count < 3)
             {
-                // Сгенерировать 3 личных задания для этого игрока
                 GenerateDailyTasksForPlayer(data);
                 data.LastTasksGeneratedDate = today;
                 dbManager.SaveDatabase();
@@ -59,26 +57,24 @@ namespace SCPSL_Lvl
 
         public void OnPlayerJoined(JoinedEventArgs ev)
         {
-            if (Plugin.Instance.Config.Debug)
+            if (Plugin.Instance.ManualConfig.Debug)
                 Log.Debug($"[EventHandlers] OnPlayerJoined: {ev.Player?.Nickname}");
-            // Редко трогаем ник здесь, лучше всё в Verified
         }
 
         public void OnPlayerSpawning(SpawningEventArgs ev)
         {
-            if (Plugin.Instance.Config.Debug)
+            if (Plugin.Instance.ManualConfig.Debug)
                 Log.Debug($"[EventHandlers] OnPlayerSpawning: {ev.Player?.Nickname}");
 
-            // Чуть подождём и обновим ник (чтобы роль точно применялась)
+            // Обновим ник через ~0.5с
             Timing.CallDelayed(0.5f, () => UpdateNickname(ev.Player));
         }
 
-        /// <summary>
-        /// Событие смерти игрока: проверяем, кто убил, выдаём опыт, проверяем квесты.
-        /// </summary>
         public void OnPlayerDied(DiedEventArgs ev)
         {
-            if (Plugin.Instance.Config.Debug)
+            var debug = Plugin.Instance.ManualConfig.Debug;
+
+            if (debug)
                 Log.Debug($"[EventHandlers] OnPlayerDied: victim={ev.Player?.Nickname} attacker={ev.Attacker?.Nickname}");
 
             if (ev.Player == null)
@@ -86,31 +82,31 @@ namespace SCPSL_Lvl
 
             var victim = ev.Player;
             var killer = ev.Attacker;
+
             if (killer == null || killer == victim)
                 return;
 
-            // Начисляем опыт за убийство (если включено)
-            var config = Plugin.Instance.Config;
+            // Начисляем XP за убийство (если включено)
+            var config = Plugin.Instance.ManualConfig;
             if (!config.EnableKillXp)
                 return;
 
             int xpToAdd = GetXpForKill(victim);
             if (xpToAdd > 0)
             {
-                if (Plugin.Instance.Config.Debug)
+                if (debug)
                     Log.Debug($"[EventHandlers] Awarding {xpToAdd} XP for kill to {killer.Nickname}");
 
                 AddPlayerXp(killer, xpToAdd, Plugin.Instance.MyTranslation.XpKillHint);
             }
 
-            // Проверяем личные квесты на убийство
+            // Проверяем личные квесты
             CheckTaskProgressOnKill(killer, victim);
         }
 
         private int GetXpForKill(Player victim)
         {
-            // Можно расширить, если у вас DummyRole, Tutorial, etc.
-            var cfg = Plugin.Instance.Config;
+            var cfg = Plugin.Instance.ManualConfig;
             switch (victim.Role.Team)
             {
                 case Team.FoundationForces:
@@ -130,11 +126,12 @@ namespace SCPSL_Lvl
 
         public void OnRoundStarted()
         {
-            if (Plugin.Instance.Config.Debug)
+            var debug = Plugin.Instance.ManualConfig.Debug;
+
+            if (debug)
                 Log.Debug("[EventHandlers] OnRoundStarted called.");
 
-            // Убрали логику глобального CheckDailyTasks — теперь задачи личные
-            var config = Plugin.Instance.Config;
+            var config = Plugin.Instance.ManualConfig;
             if (config.EnableDailyTasks)
             {
                 if (_reminderCoroutine.IsRunning)
@@ -147,7 +144,7 @@ namespace SCPSL_Lvl
                         ShowTextHint(pl, Plugin.Instance.MyTranslation.DailyTaskReminder, 5f);
                     }
 
-                    if (Plugin.Instance.Config.Debug)
+                    if (debug)
                         Log.Debug("[EventHandlers] Daily task reminder shown to all players.");
                 });
             }
@@ -158,11 +155,14 @@ namespace SCPSL_Lvl
 
         public void OnRoundEnded(RoundEndedEventArgs ev)
         {
-            if (Plugin.Instance.Config.Debug)
+            var debug = Plugin.Instance.ManualConfig.Debug;
+
+            if (debug)
                 Log.Debug("[EventHandlers] OnRoundEnded called.");
 
+            var config = Plugin.Instance.ManualConfig;
+
             // Победа команды
-            var config = Plugin.Instance.Config;
             if (config.EnableTeamWinXp)
             {
                 var winningTeam = ev.LeadingTeam;
@@ -182,7 +182,6 @@ namespace SCPSL_Lvl
                 Timing.KillCoroutines(_onlineXpCoroutine);
         }
 
-        // Генерируем игроку ровно 3 рандомных задания (Enabled = true) из TasksConfig
         private void GenerateDailyTasksForPlayer(PlayerData data)
         {
             data.CurrentDailyTasks.Clear();
@@ -193,14 +192,16 @@ namespace SCPSL_Lvl
                 .Where(t => t.Enabled)
                 .ToList();
 
+            var debug = Plugin.Instance.ManualConfig.Debug;
+
             if (allEnabledTasks.Count == 0)
             {
-                if (Plugin.Instance.Config.Debug)
+                if (debug)
                     Log.Debug("[EventHandlers] GenerateDailyTasksForPlayer: no enabled tasks found!");
                 return;
             }
 
-            // Берём случайные 3 (если меньше 3 осталось, возьмём все)
+            // Случайные 3 задания
             var rnd = new Random();
             var chosen = allEnabledTasks.OrderBy(x => rnd.Next()).Take(3).ToList();
 
@@ -210,16 +211,18 @@ namespace SCPSL_Lvl
                 data.DailyTaskProgress[taskDef.Id] = 0;
             }
 
-            if (Plugin.Instance.Config.Debug)
+            if (debug)
                 Log.Debug($"[EventHandlers] Generated 3 tasks for player {data.UserId}: {string.Join(", ", data.CurrentDailyTasks)}");
         }
 
         private void StartOnlineXpCoroutine()
         {
-            if (Plugin.Instance.Config.Debug)
+            var debug = Plugin.Instance.ManualConfig.Debug;
+
+            if (debug)
                 Log.Debug("[EventHandlers] Starting online XP coroutine.");
 
-            if (!Plugin.Instance.Config.EnableTimePlayedXp)
+            if (!Plugin.Instance.ManualConfig.EnableTimePlayedXp)
                 return;
 
             _onlineXpCoroutine = Timing.RunCoroutine(OnlineXpChecker());
@@ -240,13 +243,13 @@ namespace SCPSL_Lvl
                     var data = dbManager.GetPlayerData(pl.UserId);
                     if ((DateTime.Now - data.LastTimeXpGiven).TotalMinutes >= 5.0)
                     {
-                        int amount = Plugin.Instance.Config.TimePlayedXpAmount;
+                        int amount = Plugin.Instance.ManualConfig.TimePlayedXpAmount;
                         string msg = Plugin.Instance.MyTranslation.XpTimePlayedHint.Replace("{xp}", amount.ToString());
 
                         AddPlayerXp(pl, amount, msg);
                         data.LastTimeXpGiven = DateTime.Now;
 
-                        if (Plugin.Instance.Config.Debug)
+                        if (Plugin.Instance.ManualConfig.Debug)
                             Log.Debug($"[EventHandlers] Gave {amount} XP for time played to {pl.Nickname}");
                     }
                 }
@@ -266,7 +269,7 @@ namespace SCPSL_Lvl
             data.TotalXp += xpAmount;
             string hintMsg = translationHint.Replace("{xp}", xpAmount.ToString());
 
-            if (Plugin.Instance.Config.Debug)
+            if (Plugin.Instance.ManualConfig.Debug)
                 Log.Debug($"[EventHandlers] Player {player.Nickname} now has {data.TotalXp} XP total.");
 
             ShowTextHint(player, hintMsg, 3f);
@@ -301,7 +304,7 @@ namespace SCPSL_Lvl
                 ? player.Nickname
                 : data.OriginalNickname;
 
-            var config = Plugin.Instance.Config;
+            var config = Plugin.Instance.ManualConfig;
             string format = string.IsNullOrEmpty(config.NicknameFormat)
                 ? "[level] / {nickname}"
                 : config.NicknameFormat;
@@ -312,16 +315,15 @@ namespace SCPSL_Lvl
 
             player.DisplayNickname = newNickname;
 
-            if (Plugin.Instance.Config.Debug)
+            if (Plugin.Instance.ManualConfig.Debug)
                 Log.Debug($"[EventHandlers] Updated nickname for {player.UserId}. New nickname: {newNickname}");
         }
 
-        /// <summary>
-        /// Важно: теперь берём задачи не из глобального DailyTasks, а из PlayerData.CurrentDailyTasks.
-        /// </summary>
         private void CheckTaskProgressOnKill(Player killer, Player victim)
         {
-            if (Plugin.Instance.Config.Debug)
+            var debug = Plugin.Instance.ManualConfig.Debug;
+
+            if (debug)
                 Log.Debug($"[EventHandlers] CheckTaskProgressOnKill: killer={killer?.Nickname}, victim={victim?.Nickname}");
 
             if (killer == null)
@@ -330,10 +332,9 @@ namespace SCPSL_Lvl
             var dbManager = Plugin.Instance.PlayerDatabaseManager;
             var data = dbManager.GetPlayerData(killer.UserId);
 
-            // Личные задания
+            // Идём по заданиям
             foreach (var taskId in data.CurrentDailyTasks)
             {
-                // Если уже выполнено, пропускаем
                 if (data.CompletedDailyTasks.Contains(taskId))
                     continue;
 
@@ -341,14 +342,13 @@ namespace SCPSL_Lvl
                 if (def == null)
                     continue;
 
-                // Идём по задаче
                 switch (taskId)
                 {
                     case "Kill5DclassOneRound":
                         if (victim.Role.Team == Team.ClassD)
                         {
                             data.DailyTaskProgress[taskId]++;
-                            if (Plugin.Instance.Config.Debug)
+                            if (debug)
                                 Log.Debug($"[EventHandlers] Kill5DclassOneRound progress: {data.DailyTaskProgress[taskId]}");
 
                             if (data.DailyTaskProgress[taskId] >= 5)
@@ -364,7 +364,7 @@ namespace SCPSL_Lvl
                         }
                         break;
 
-                        // Здесь можно дополнять другими заданиями
+                        // ... и т.д.
                 }
             }
 
@@ -373,27 +373,28 @@ namespace SCPSL_Lvl
 
         private void CompleteDailyTask(Player player, TaskDefinition def)
         {
-            if (Plugin.Instance.Config.Debug)
+            var debug = Plugin.Instance.ManualConfig.Debug;
+
+            if (debug)
                 Log.Debug($"[EventHandlers] Completing daily task {def.Id} for {player.Nickname}");
 
             var data = Plugin.Instance.PlayerDatabaseManager.GetPlayerData(player.UserId);
             data.CompletedDailyTasks.Add(def.Id);
 
-            // Сразу добавляем экспу (по желанию)
             string msg = Plugin.Instance.MyTranslation.XpDailyTaskCompleted.Replace("{xp}", def.XpReward.ToString());
             AddPlayerXp(player, def.XpReward, msg);
 
-            // Сохраняем
             Plugin.Instance.PlayerDatabaseManager.SaveDatabase();
         }
 
         private void ResetRoundBasedTasks()
         {
-            if (Plugin.Instance.Config.Debug)
+            var debug = Plugin.Instance.ManualConfig.Debug;
+
+            if (debug)
                 Log.Debug("[EventHandlers] ResetRoundBasedTasks called.");
 
             var tasksConfig = Plugin.Instance.TasksConfig;
-            // Ищем те задания, у которых MustBeDoneInOneRound = true
             var roundBasedIds = tasksConfig.PossibleTasks
                 .Where(t => t.MustBeDoneInOneRound)
                 .Select(t => t.Id)
@@ -411,7 +412,6 @@ namespace SCPSL_Lvl
                 var data = kvp.Value;
                 foreach (var taskId in roundBasedIds)
                 {
-                    // Если задание не выполнено — сбрасываем прогресс
                     if (!data.CompletedDailyTasks.Contains(taskId))
                     {
                         if (data.DailyTaskProgress.ContainsKey(taskId))

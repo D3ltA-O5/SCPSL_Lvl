@@ -10,8 +10,6 @@ namespace SCPSL_Lvl
     public class PlayerDatabaseManager
     {
         private readonly string _databasePath;
-
-        // Закрытое поле, где храним все PlayerData
         private Dictionary<string, PlayerData> _playerDataDict = new Dictionary<string, PlayerData>();
 
         public PlayerDatabaseManager(string path)
@@ -22,18 +20,19 @@ namespace SCPSL_Lvl
 
         public PlayerData GetPlayerData(string userId)
         {
-            if (Plugin.Instance.Config.Debug)
+            var debug = Plugin.Instance.ManualConfig.Debug;
+
+            if (debug)
                 Log.Debug($"[PlayerDatabaseManager] GetPlayerData called for {userId}");
 
             if (_playerDataDict.TryGetValue(userId, out var data))
             {
-                if (Plugin.Instance.Config.Debug)
+                if (debug)
                     Log.Debug($"[PlayerDatabaseManager] Found existing PlayerData for {userId}");
                 return data;
             }
             else
             {
-                // Создаём новую запись
                 var newData = new PlayerData
                 {
                     UserId = userId,
@@ -43,7 +42,7 @@ namespace SCPSL_Lvl
 
                 _playerDataDict[userId] = newData;
 
-                if (Plugin.Instance.Config.Debug)
+                if (debug)
                     Log.Debug($"[PlayerDatabaseManager] Created new PlayerData for {userId}");
 
                 SaveDatabase();
@@ -53,16 +52,18 @@ namespace SCPSL_Lvl
 
         public void SaveDatabase()
         {
+            var debug = Plugin.Instance.ManualConfig.Debug;
+
             try
             {
-                if (Plugin.Instance.Config.Debug)
+                if (debug)
                     Log.Debug($"[PlayerDatabaseManager] Saving player database to {_databasePath}");
 
                 var serializer = new SerializerBuilder().Build();
                 var yaml = serializer.Serialize(_playerDataDict.Values.ToList());
                 File.WriteAllText(_databasePath, yaml);
 
-                if (Plugin.Instance.Config.Debug)
+                if (debug)
                     Log.Debug("[PlayerDatabaseManager] Database saved successfully.");
             }
             catch (Exception e)
@@ -75,8 +76,8 @@ namespace SCPSL_Lvl
         {
             if (!File.Exists(_databasePath))
             {
-                if (Plugin.Instance.Config.Debug)
-                    Log.Debug($"[PlayerDatabaseManager] Database file not found. Creating new empty file.");
+                if (Plugin.Instance.ManualConfig.Debug)
+                    Log.Debug("[PlayerDatabaseManager] Database file not found. Creating new empty file.");
 
                 SaveDatabase();
                 return;
@@ -90,7 +91,7 @@ namespace SCPSL_Lvl
 
                 _playerDataDict = list.ToDictionary(p => p.UserId, p => p);
 
-                if (Plugin.Instance.Config.Debug)
+                if (Plugin.Instance.ManualConfig.Debug)
                     Log.Debug("[PlayerDatabaseManager] Database loaded successfully.");
             }
             catch (Exception e)
@@ -100,12 +101,11 @@ namespace SCPSL_Lvl
             }
         }
 
-        /// <summary>
-        /// Сбрасываем ежедневные задания у всех игроков (прогресс), если они ещё не выполнены.
-        /// </summary>
         public void ResetDailyTasks(List<string> currentDailyTasks)
         {
-            if (Plugin.Instance.Config.Debug)
+            var debug = Plugin.Instance.ManualConfig.Debug;
+
+            if (debug)
                 Log.Debug("[PlayerDatabaseManager] ResetDailyTasks called.");
 
             foreach (var data in _playerDataDict.Values)

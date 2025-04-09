@@ -14,7 +14,7 @@ namespace SCPSL_Lvl
 
         public bool Execute(ArraySegment<string> arguments, ICommandSender sender, out string response)
         {
-            if (Plugin.Instance.Config.Debug)
+            if (Plugin.Instance.ManualConfig.Debug)
                 Log.Debug("[TasksCommand] Execute called.");
 
             var player = Player.Get(sender);
@@ -39,7 +39,6 @@ namespace SCPSL_Lvl
                 return false;
             }
 
-            // Получаем PlayerData этого игрока
             var data = db.GetPlayerData(player.UserId);
             if (data == null)
             {

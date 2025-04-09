@@ -17,13 +17,15 @@ namespace SCPSL_Lvl
 
         public void GenerateNewDailyTasks(TasksConfig tasksConfig, int tasksCount = 3)
         {
+            var debug = Plugin.Instance.ManualConfig.Debug;
+
             LastGeneratedDate = DateTime.Now.Date;
             CurrentDailyTasks.Clear();
 
             var enabledTasks = tasksConfig.PossibleTasks.Where(t => t.Enabled).ToList();
             if (enabledTasks.Count == 0)
             {
-                if (Plugin.Instance.Config.Debug)
+                if (debug)
                     Log.Debug("[DailyTasksDatabase] No enabled tasks found. Can't generate daily tasks.");
                 return;
             }
@@ -32,13 +34,15 @@ namespace SCPSL_Lvl
             var shuffled = enabledTasks.OrderBy(x => rnd.Next()).Take(tasksCount);
             CurrentDailyTasks.AddRange(shuffled.Select(t => t.Id));
 
-            if (Plugin.Instance.Config.Debug)
+            if (debug)
                 Log.Debug("[DailyTasksDatabase] New daily tasks generated.");
         }
 
         public static DailyTasksDatabase LoadOrCreate(string path)
         {
-            if (Plugin.Instance.Config.Debug)
+            var debug = Plugin.Instance.ManualConfig.Debug;
+
+            if (debug)
                 Log.Debug($"[DailyTasksDatabase] Loading or creating: {path}");
 
             if (!File.Exists(path))
@@ -52,7 +56,7 @@ namespace SCPSL_Lvl
             var deserializer = new DeserializerBuilder().Build();
             var db = deserializer.Deserialize<DailyTasksDatabase>(text) ?? new DailyTasksDatabase();
 
-            if (Plugin.Instance.Config.Debug)
+            if (debug)
                 Log.Debug("[DailyTasksDatabase] Loaded successfully.");
 
             return db;
@@ -60,14 +64,16 @@ namespace SCPSL_Lvl
 
         public void Save(string path)
         {
-            if (Plugin.Instance.Config.Debug)
+            var debug = Plugin.Instance.ManualConfig.Debug;
+
+            if (debug)
                 Log.Debug($"[DailyTasksDatabase] Saving to {path}");
 
             var serializer = new SerializerBuilder().Build();
             var yaml = serializer.Serialize(this);
             File.WriteAllText(path, yaml);
 
-            if (Plugin.Instance.Config.Debug)
+            if (debug)
                 Log.Debug("[DailyTasksDatabase] Saved.");
         }
 

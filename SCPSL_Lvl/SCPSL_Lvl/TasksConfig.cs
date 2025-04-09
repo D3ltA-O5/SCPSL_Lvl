@@ -72,6 +72,9 @@ namespace SCPSL_Lvl
 
         public static TasksConfig LoadOrCreate(string path)
         {
+            if (Plugin.Instance.ManualConfig.Debug)
+                Log.Debug($"[TasksConfig] Loading or creating: {path}");
+
             if (!File.Exists(path))
             {
                 var def = new TasksConfig();
@@ -87,9 +90,15 @@ namespace SCPSL_Lvl
 
         public void Save(string path)
         {
+            if (Plugin.Instance.ManualConfig.Debug)
+                Log.Debug($"[TasksConfig] Saving to file: {path}");
+
             var serializer = new SerializerBuilder().Build();
             var yaml = serializer.Serialize(this);
             File.WriteAllText(path, yaml);
+
+            if (Plugin.Instance.ManualConfig.Debug)
+                Log.Debug("[TasksConfig] Saved.");
         }
     }
 }
