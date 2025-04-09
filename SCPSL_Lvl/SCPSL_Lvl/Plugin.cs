@@ -6,11 +6,6 @@ using Server = Exiled.Events.Handlers.Server;
 
 namespace SCPSL_Lvl
 {
-    /// <summary>
-    /// Основной класс плагина:
-    /// - Наследуется от Plugin<ExiledStubConfig>, чтобы EXILED не выдавал ошибок.
-    /// - Использует ManualConfig (MainConfig) из SCPSL_Lvl для всех "настоящих" настроек.
-    /// </summary>
     public class Plugin : Plugin<ExiledStubConfig>
     {
         public static Plugin Instance { get; private set; }
@@ -20,35 +15,35 @@ namespace SCPSL_Lvl
         public override Version Version => new Version(1, 0, 0);
         public override Version RequiredExiledVersion => new Version(9, 0, 0);
 
-        /// <summary>
-        /// Здесь можно при желании задать префикс для логов, если нужно.
-        /// </summary>
         public override string Prefix => "ScpSlLevelSystem";
 
         /// <summary>
-        /// Папка, в которой лежат MainConfig.yml, LevelThresholds.yml и т.д.
+        /// Папка, в которой лежат MainConfig.yml, LevelThresholds.yml, players_cold.yml, players_hot.yml и т.д.
         /// </summary>
         public string PluginFolderPath => Path.Combine(Paths.Configs, "SCPSL_Lvl");
 
         /// <summary>
-        /// Ваш основной конфиг, который хранит все настройки плагина (EnableKillXp и т.д.).
-        /// Загружается вручную из SCPSL_Lvl/MainConfig.yml.
+        /// Ваш основной конфиг (все настройки), загружается вручную из SCPSL_Lvl/MainConfig.yml.
         /// </summary>
         public MainConfig ManualConfig { get; private set; }
 
-        // Остальные подсистемы
+        // Остальные объекты
         public LevelConfig LevelConfig { get; private set; }
         public TasksConfig TasksConfig { get; private set; }
+
+        /// <summary>
+        /// Менеджер баз данных (холодной и горячей).
+        /// </summary>
         public PlayerDatabaseManager PlayerDatabaseManager { get; private set; }
+
         public PluginTranslations MyTranslation { get; private set; }
         public EventHandlers EventHandlers { get; private set; }
 
         public override void OnEnabled()
         {
-            // Сначала даём возможность EXILED загрузить ExiledStubConfig
             base.OnEnabled();
 
-            // Если в ExiledStubConfig стоит IsEnabled = false, то не загружаем MainConfig
+            // Проверяем ExiledStubConfig (IsEnabled=false => плагин не запускается)
             if (!Config.IsEnabled)
             {
                 Log.Info($"[{Name}] Disabled via ExiledStubConfig (IsEnabled=false).");
@@ -59,14 +54,12 @@ namespace SCPSL_Lvl
 
             try
             {
-                // Создаём папку SCPSL_Lvl (если её нет), чтобы хранить все YAML-файлы
                 Directory.CreateDirectory(PluginFolderPath);
 
-                // Загружаем ваш основной конфиг (ManualConfig)
+                // Загружаем наш "настоящий" конфиг
                 var mainConfigPath = Path.Combine(PluginFolderPath, "MainConfig.yml");
                 ManualConfig = MainConfig.LoadOrCreate(mainConfigPath);
 
-                // Если в MainConfig (ManualConfig) тоже стоит IsEnabled=false, завершаем
                 if (!ManualConfig.IsEnabled)
                 {
                     Log.Info($"[{Name}] Disabled via MainConfig (IsEnabled=false).");
@@ -76,16 +69,20 @@ namespace SCPSL_Lvl
                 if (ManualConfig.Debug)
                     Log.Debug("[Plugin] Loading other configs and database...");
 
-                // Загружаем остальные YAML-конфиги
+                // Загружаем остальные конфиги
                 LevelConfig = LevelConfig.LoadOrCreate(Path.Combine(PluginFolderPath, "LevelThresholds.yml"));
                 TasksConfig = TasksConfig.LoadOrCreate(Path.Combine(PluginFolderPath, "TasksConfig.yml"));
-                PlayerDatabaseManager = new PlayerDatabaseManager(Path.Combine(PluginFolderPath, "players.yml"));
+
+                // Инициализируем базы данных (холодную и горячую)
+                string coldDbPath = Path.Combine(PluginFolderPath, "players_cold.yml");
+                string hotDbPath = Path.Combine(PluginFolderPath, "players_hot.yml");
+                PlayerDatabaseManager = new PlayerDatabaseManager(coldDbPath, hotDbPath);
 
                 // Переводы
                 string translationsPath = Path.Combine(PluginFolderPath, "Translations.yml");
                 MyTranslation = PluginTranslations.LoadOrCreate(translationsPath);
 
-                // Подключаем обработчики событий
+                // Регистрируем обработчики
                 EventHandlers = new EventHandlers();
                 SubscribeEvents();
 
@@ -101,7 +98,7 @@ namespace SCPSL_Lvl
         {
             base.OnDisabled();
 
-            // Если мы успели загрузить ManualConfig, сохраним его (вдруг что-то менялось в runtime)
+            // Сохраняем ManualConfig (на случай, если что-то менялось)
             if (ManualConfig != null)
             {
                 try
@@ -115,11 +112,13 @@ namespace SCPSL_Lvl
                 }
             }
 
-            // Отписываемся от событий
+            // Отписываемся
             UnsubscribeEvents();
 
-            // Сохраняем базу игроков и переводы (если они существуют)
-            PlayerDatabaseManager?.SaveDatabase();
+            // Сохраняем базы данных (холодная + горячая) - на случай корректного завершения
+            PlayerDatabaseManager?.SaveColdDatabase();
+            PlayerDatabaseManager?.SaveHotDatabase();
+
             MyTranslation?.Save(Path.Combine(PluginFolderPath, "Translations.yml"));
 
             Log.Info($"[{Name}] Plugin disabled.");
@@ -135,6 +134,9 @@ namespace SCPSL_Lvl
             Player.Died += EventHandlers.OnPlayerDied;
             Player.Spawning += EventHandlers.OnPlayerSpawning;
             Player.Joined += EventHandlers.OnPlayerJoined;
+
+            // Новый слушатель на выход игрока
+            Player.Left += EventHandlers.OnPlayerLeft;
 
             Server.RoundStarted += EventHandlers.OnRoundStarted;
             Server.RoundEnded += EventHandlers.OnRoundEnded;
@@ -152,6 +154,9 @@ namespace SCPSL_Lvl
             Player.Died -= EventHandlers.OnPlayerDied;
             Player.Spawning -= EventHandlers.OnPlayerSpawning;
             Player.Joined -= EventHandlers.OnPlayerJoined;
+
+            // Отписываемся от Left
+            Player.Left -= EventHandlers.OnPlayerLeft;
 
             Server.RoundStarted -= EventHandlers.OnRoundStarted;
             Server.RoundEnded -= EventHandlers.OnRoundEnded;

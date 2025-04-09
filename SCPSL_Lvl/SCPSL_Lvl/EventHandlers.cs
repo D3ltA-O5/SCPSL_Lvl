@@ -20,36 +20,33 @@ namespace SCPSL_Lvl
         public void OnPlayerVerified(VerifiedEventArgs ev)
         {
             var debug = Plugin.Instance.ManualConfig.Debug;
-
             if (debug)
                 Log.Debug($"[EventHandlers] OnPlayerVerified: {ev.Player?.UserId}");
 
             if (ev.Player == null || string.IsNullOrEmpty(ev.Player.UserId))
                 return;
 
-            var dbManager = Plugin.Instance.PlayerDatabaseManager;
-            if (dbManager == null)
-                return;
-
-            var data = dbManager.GetPlayerData(ev.Player.UserId);
+            // "Горячая" база: получаем данные, которые при необходимости
+            // подтянутся из холодной базы или создадутся
+            var data = Plugin.Instance.PlayerDatabaseManager.GetPlayerData(ev.Player.UserId);
 
             // Сохраняем оригинальный ник (если не сохранён)
             if (string.IsNullOrEmpty(data.OriginalNickname))
             {
                 data.OriginalNickname = ev.Player.Nickname;
-                dbManager.SaveDatabase();
+                Plugin.Instance.PlayerDatabaseManager.SaveHotDatabase();
 
                 if (debug)
                     Log.Debug($"[EventHandlers] Original nickname saved: {data.OriginalNickname}");
             }
 
-            // Проверяем дату последних заданий
+            // Проверяем генерацию заданий
             var today = DateTime.Now.Date;
             if (data.LastTasksGeneratedDate < today || data.CurrentDailyTasks.Count < 3)
             {
                 GenerateDailyTasksForPlayer(data);
                 data.LastTasksGeneratedDate = today;
-                dbManager.SaveDatabase();
+                Plugin.Instance.PlayerDatabaseManager.SaveHotDatabase();
             }
 
             UpdateNickname(ev.Player);
@@ -65,9 +62,23 @@ namespace SCPSL_Lvl
         {
             if (Plugin.Instance.ManualConfig.Debug)
                 Log.Debug($"[EventHandlers] OnPlayerSpawning: {ev.Player?.Nickname}");
-
-            // Обновим ник через ~0.5с
             Timing.CallDelayed(0.5f, () => UpdateNickname(ev.Player));
+        }
+
+        /// <summary>
+        /// Вызывается, когда игрок вышел (Left).
+        /// Синхронизируем изменения в холодную базу, убираем запись из горячей.
+        /// </summary>
+        public void OnPlayerLeft(LeftEventArgs ev)
+        {
+            var debug = Plugin.Instance.ManualConfig.Debug;
+            if (debug)
+                Log.Debug($"[EventHandlers] OnPlayerLeft: {ev.Player?.UserId}");
+
+            if (ev.Player == null || string.IsNullOrEmpty(ev.Player.UserId))
+                return;
+
+            Plugin.Instance.PlayerDatabaseManager.RemoveFromHotDatabase(ev.Player.UserId);
         }
 
         public void OnPlayerDied(DiedEventArgs ev)
@@ -82,11 +93,9 @@ namespace SCPSL_Lvl
 
             var victim = ev.Player;
             var killer = ev.Attacker;
-
             if (killer == null || killer == victim)
                 return;
 
-            // Начисляем XP за убийство (если включено)
             var config = Plugin.Instance.ManualConfig;
             if (!config.EnableKillXp)
                 return;
@@ -100,7 +109,6 @@ namespace SCPSL_Lvl
                 AddPlayerXp(killer, xpToAdd, Plugin.Instance.MyTranslation.XpKillHint);
             }
 
-            // Проверяем личные квесты
             CheckTaskProgressOnKill(killer, victim);
         }
 
@@ -120,14 +128,13 @@ namespace SCPSL_Lvl
                 case Team.SCPs:
                     return cfg.KillXpScp;
                 default:
-                    return 10; // fallback XP
+                    return 10;
             }
         }
 
         public void OnRoundStarted()
         {
             var debug = Plugin.Instance.ManualConfig.Debug;
-
             if (debug)
                 Log.Debug("[EventHandlers] OnRoundStarted called.");
 
@@ -156,13 +163,10 @@ namespace SCPSL_Lvl
         public void OnRoundEnded(RoundEndedEventArgs ev)
         {
             var debug = Plugin.Instance.ManualConfig.Debug;
-
             if (debug)
                 Log.Debug("[EventHandlers] OnRoundEnded called.");
 
             var config = Plugin.Instance.ManualConfig;
-
-            // Победа команды
             if (config.EnableTeamWinXp)
             {
                 var winningTeam = ev.LeadingTeam;
@@ -193,7 +197,6 @@ namespace SCPSL_Lvl
                 .ToList();
 
             var debug = Plugin.Instance.ManualConfig.Debug;
-
             if (allEnabledTasks.Count == 0)
             {
                 if (debug)
@@ -201,7 +204,6 @@ namespace SCPSL_Lvl
                 return;
             }
 
-            // Случайные 3 задания
             var rnd = new Random();
             var chosen = allEnabledTasks.OrderBy(x => rnd.Next()).Take(3).ToList();
 
@@ -218,7 +220,6 @@ namespace SCPSL_Lvl
         private void StartOnlineXpCoroutine()
         {
             var debug = Plugin.Instance.ManualConfig.Debug;
-
             if (debug)
                 Log.Debug("[EventHandlers] Starting online XP coroutine.");
 
@@ -254,7 +255,7 @@ namespace SCPSL_Lvl
                     }
                 }
 
-                dbManager.SaveDatabase();
+                dbManager.SaveHotDatabase();
             }
         }
 
@@ -274,7 +275,7 @@ namespace SCPSL_Lvl
 
             ShowTextHint(player, hintMsg, 3f);
 
-            dbManager.SaveDatabase();
+            dbManager.SaveHotDatabase();
             UpdateNickname(player);
         }
 
@@ -322,7 +323,6 @@ namespace SCPSL_Lvl
         private void CheckTaskProgressOnKill(Player killer, Player victim)
         {
             var debug = Plugin.Instance.ManualConfig.Debug;
-
             if (debug)
                 Log.Debug($"[EventHandlers] CheckTaskProgressOnKill: killer={killer?.Nickname}, victim={victim?.Nickname}");
 
@@ -332,7 +332,6 @@ namespace SCPSL_Lvl
             var dbManager = Plugin.Instance.PlayerDatabaseManager;
             var data = dbManager.GetPlayerData(killer.UserId);
 
-            // Идём по заданиям
             foreach (var taskId in data.CurrentDailyTasks)
             {
                 if (data.CompletedDailyTasks.Contains(taskId))
@@ -363,18 +362,15 @@ namespace SCPSL_Lvl
                                 CompleteDailyTask(killer, def);
                         }
                         break;
-
-                        // ... и т.д.
                 }
             }
 
-            dbManager.SaveDatabase();
+            dbManager.SaveHotDatabase();
         }
 
         private void CompleteDailyTask(Player player, TaskDefinition def)
         {
             var debug = Plugin.Instance.ManualConfig.Debug;
-
             if (debug)
                 Log.Debug($"[EventHandlers] Completing daily task {def.Id} for {player.Nickname}");
 
@@ -384,13 +380,12 @@ namespace SCPSL_Lvl
             string msg = Plugin.Instance.MyTranslation.XpDailyTaskCompleted.Replace("{xp}", def.XpReward.ToString());
             AddPlayerXp(player, def.XpReward, msg);
 
-            Plugin.Instance.PlayerDatabaseManager.SaveDatabase();
+            Plugin.Instance.PlayerDatabaseManager.SaveHotDatabase();
         }
 
         private void ResetRoundBasedTasks()
         {
             var debug = Plugin.Instance.ManualConfig.Debug;
-
             if (debug)
                 Log.Debug("[EventHandlers] ResetRoundBasedTasks called.");
 
@@ -402,7 +397,7 @@ namespace SCPSL_Lvl
 
             var dbField = Plugin.Instance.PlayerDatabaseManager
                 .GetType()
-                .GetField("_playerDataDict", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                .GetField("_hotPlayerDataDict", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
 
             if (!(dbField?.GetValue(Plugin.Instance.PlayerDatabaseManager) is Dictionary<string, PlayerData> dict))
                 return;
@@ -420,7 +415,7 @@ namespace SCPSL_Lvl
                 }
             }
 
-            Plugin.Instance.PlayerDatabaseManager.SaveDatabase();
+            Plugin.Instance.PlayerDatabaseManager.SaveHotDatabase();
         }
 
         private LeadingTeam GetLeadingTeamFromTeam(Team team)
